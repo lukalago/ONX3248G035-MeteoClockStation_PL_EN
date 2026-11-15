@@ -1,3 +1,9 @@
+<img width="640" height="960" alt="ekran_glowny_pl" src="https://github.com/user-attachments/assets/9986f638-dbd9-4402-bbdc-bd3205f76369" />
+<img width="2320" height="490" alt="wszystkie_ekrany_en" src="https://github.com/user-attachments/assets/0b4c5746-61a7-4551-8623-4220ee4d0c14" />
+<img width="640" height="960" alt="ekran_glowny_en" src="https://github.com/user-attachments/assets/70a3eeeb-822e-480f-b424-a92db7e4d6b8" />
+<img width="2320" height="490" alt="wszystkie_ekrany_pl" src="https://github.com/user-attachments/assets/5329e25c-35f6-4d5a-ba54-1fe18d2f1d1e" />
+
+
 # Stacja pogody ESP32-S3 – Nextion ONX3248G035
 
 Domowa stacja pogody na module **Nextion ONX3248G035** (ESP32-S3, ekran 3,5" 320×480 z dotykiem).
