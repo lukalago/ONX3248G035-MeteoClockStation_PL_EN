@@ -1,0 +1,23 @@
+2026
+# zmieszane i bio (wtorki, przesuniecia po swietach)
+7.01 20.01 zmieszane, bio
+13.01 27.01 zmieszane
+3.02 17.02 zmieszane, bio
+10.02 24.02 zmieszane
+3.03 17.03 31.03 zmieszane, bio
+10.03 24.03 zmieszane
+8.04 14.04 21.04 28.04 zmieszane, bio
+5.05 12.05 19.05 26.05 zmieszane, bio
+2.06 9.06 16.06 23.06 30.06 zmieszane, bio
+7.07 14.07 21.07 28.07 zmieszane, bio
+4.08 11.08 18.08 25.08 zmieszane, bio
+1.09 8.09 15.09 22.09 29.09 zmieszane, bio
+6.10 13.10 20.10 27.10 zmieszane, bio
+3.11 10.11 17.11 24.11 zmieszane, bio
+8.12 21.12 zmieszane, bio
+1.12 15.12 29.12 zmieszane
+# segregowane w workach (poniedzialki)
+5.01 19.01 2.02 16.02 2.03 16.03 30.03 segregowane
+13.04 27.04 11.05 25.05 8.06 22.06 segregowane
+6.07 20.07 3.08 17.08 31.08 segregowane
+14.09 28.09 12.10 26.10 9.11 23.11 7.12 19.12 segregowane
