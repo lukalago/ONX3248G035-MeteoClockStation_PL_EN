@@ -62,7 +62,7 @@ Pełna instrukcja budowy: [`docs/Stacja_pogody_ESP32_dokumentacja.docx`](docs/St
 ## Pierwsze uruchomienie
 
 Bez zapisanej sieci stacja tworzy punkt dostępowy **StacjaPogody-Setup**. Połącz się z nim telefonem,
-otwórz w przeglądarce adres pokazany na ekranie, wybierz sieć Wi-Fi, wpisz miasto i zapisz.
+otwórz w przeglądarce adres pokazany na ekranie, wybierz sieć Wi-Fi i zapisz.
 Później panel jest dostępny pod adresem IP stacji (ekran informacji: dotknięcie kresek Wi-Fi).
 
 ## Narzędzia
