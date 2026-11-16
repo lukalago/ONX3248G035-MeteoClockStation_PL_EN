@@ -17,7 +17,7 @@ Domowa stacja pogody na module **Nextion ONX3248G035** (ESP32-S3, ekran 3,5" 320
 Pokazuje aktualną pogodę, prognozę, jakość powietrza, wschód i zachód słońca, fazę Księżyca, pyłki
 oraz przypomina o wywozie śmieci. Napisy po polsku albo po angielsku, a konfiguracja odbywa się przez panel WWW.
 
-*English:* a home weather station for the Nextion ONX3248G035 (ESP32-S3) board. The screen and web panel can be switched to English in the panel (IMGW data: Only PL).
+*English:* a home weather station for the Nextion ONX3248G035 (ESP32-S3) board. The screen and web panel can be switched to English in the panel (IMGW data: only PL).
 
 ## Funkcje
 
