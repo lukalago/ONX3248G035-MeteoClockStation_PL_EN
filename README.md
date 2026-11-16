@@ -1,6 +1,7 @@
 # ESP32-S3 Weather Station with Clock – Open Nextion ONX3248G035
 
 🇬🇧 **English** | 🇵🇱 [Polski](README_PL.md)
+<img width="2331" height="2265" alt="Nextion-ESP32-S3_METEO" src="https://github.com/user-attachments/assets/c8ab5df0-cdcf-424a-968e-b93159ddcca7" />
 
 <p align="center">
   <img width="320" alt="Main screen (PL)" src="https://github.com/user-attachments/assets/9986f638-dbd9-4402-bbdc-bd3205f76369" />
