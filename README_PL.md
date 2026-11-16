@@ -1,6 +1,7 @@
 # Stacja pogody z zegarem ESP32-S3 – Open Nextion ONX3248G035
 
 🇬🇧 [English](README.md) | 🇵🇱 **Polski**
+<img width="2331" height="2265" alt="Nextion-ESP32-S3_METEO" src="https://github.com/user-attachments/assets/edaa5578-8fcb-4286-8849-4c1eb8ea2388" />
 
 <p align="center">
   <img width="320" alt="Ekran główny (PL)" src="https://github.com/user-attachments/assets/9986f638-dbd9-4402-bbdc-bd3205f76369" />
