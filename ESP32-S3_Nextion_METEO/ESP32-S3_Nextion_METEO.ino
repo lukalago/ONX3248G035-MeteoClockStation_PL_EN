@@ -1,7 +1,6 @@
-// =====================================================================
-//  Zegar pogodowy — ONX3248G035 (Open Nextion Genius, ESP32-S3, ST7796 SPI)
-//  Zegar + pogoda/prognoza + ciśnienie lokalne (BME280) + panel WWW + motywy
-// =====================================================================
+// =======================================================================
+//  Stacja Meteo — ONX3248G035 (Open Nextion Genius, ESP32-S3, ST7796 SPI)
+// =======================================================================
 
 #include <Arduino.h>
 #include <math.h>
