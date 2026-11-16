@@ -30,9 +30,8 @@ oraz przypomina o wywozie śmieci. Napisy po polsku albo po angielsku, a konfigu
 - **Źródła danych:** Open-Meteo (bez klucza), opcjonalnie MSN Pogoda (z ostrzeżeniami IMGW przed wiatrem)
   i pomiary ze stacji IMGW; opcjonalny czujnik BME280.
 - **Ostrzeżenie o silnym wietrze:** z IMGW albo z prognozy, kolorowanie wiatru na ekranach.
-- **Ostrzeżenie o oblodzeniu, gołoledzi, itp...
 - **Przypomnienie o wywozie śmieci:** lista dat w panelu WWW (przykład: `docs/przyklad_harmonogram_smieci.txt`).
-- **Praca na akumulatorze Li-ion:** ikona baterii, tryb oszczędzania (przyciemnienie, Wi-Fi tylko na pobranie).
+- **Praca na zasilaniu z USB-C i akumulatorze Li-ion (jako podtrzymanie):** ikona baterii, tryb oszczędzania (przyciemnienie, Wi-Fi tylko na pobranie).
 - **Panel WWW:** wszystkie ustawienia, 3 sieci Wi-Fi (główna + 2 zapasowe), adres `meteo.local` (nazwa do zmiany), aktualizacja OTA, przejście w tryb AP.
 - **Język polski / angielski (English):** ekran i panel WWW, przełącznik na górze panelu. Ostrzeżenia i stacje IMGW są dostępne tylko po polsku.
 - **Tryb konfiguracji (AP)** z kodem QR do połączenia z siecią stacji.
