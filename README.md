@@ -30,6 +30,7 @@ oraz przypomina o wywozie śmieci. Napisy po polsku albo po angielsku, a konfigu
 - **Źródła danych:** Open-Meteo (bez klucza), opcjonalnie MSN Pogoda (z ostrzeżeniami IMGW przed wiatrem)
   i pomiary ze stacji IMGW; opcjonalny czujnik BME280.
 - **Ostrzeżenie o silnym wietrze:** z IMGW albo z prognozy, kolorowanie wiatru na ekranach.
+- **Ostrzeżenie o oblodzeniu lub gołoledzi z wyprzedzeniem 12h:**
 - **Przypomnienie o wywozie śmieci:** lista dat w panelu WWW (przykład: `docs/przyklad_harmonogram_smieci.txt`).
 - **Praca na zasilaniu z USB-C i akumulatorze Li-ion (jako podtrzymanie):** ikona baterii, tryb oszczędzania (przyciemnienie, Wi-Fi załączone tylko na pobranie danych pogodowych).
 - **Panel WWW:** wszystkie ustawienia, 3 sieci Wi-Fi (główna + 2 zapasowe), adres `meteo.local` (nazwa do zmiany), aktualizacja OTA, przejście w tryb AP.
