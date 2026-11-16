@@ -1,6 +1,7 @@
-// ========================================================================
-//  Stacja Meteo — ONX3248G035 (Open Nextion Genius, ESP32-S3, ST7796 SPI)
-// ========================================================================
+// =====================================================================
+//  Zegar pogodowy — ONX3248G035 (Open Nextion Genius, ESP32-S3, ST7796 SPI)
+//  Zegar + pogoda/prognoza + ciśnienie lokalne (BME280) + panel WWW + motywy
+// =====================================================================
 
 #include <Arduino.h>
 #include <math.h>
@@ -2337,9 +2338,9 @@ float sunAdjustment(const String &icon) {
 
 // ---------------------------------------------------------------------
 //  Wskazowka nad paskiem komfortu: "<etykieta komfortu> - <zjawisko>", np. "Chłodno - możliwy deszcz".
-//  Opisuje tylko zjawiska istotne z godzinowki (najblizsze 6 h, szansa opadow >= 40%): możliwy grad, możliwa burza,
-//  opady śniegu, deszcz ze śniegiem / ryzyko gołoledzi, deszczowo / możliwy deszcz / przelotne opady, możliwa mgła,
-//  wiatr (ostrzezenie IMGW albo z prognozy). Gdy nic takiego - zachmurzenie wg aktualnej ikony: słonecznie (w dzien) / bezchmurnie (w nocy),
+//  Zjawiska grozne (grad, burza, gołoledź, śnieg, deszcz ze śniegiem, oblodzenie, silny wiatr) - SAM pomaranczowy
+//  napis (bez etykiety), z wyprzedzeniem do 12 h, a wieczorem do rana; zwykle (deszcz, mgła) - najblizsze 4 h.
+//  Szczegoly przy buildWeatherHint(). Gdy nic takiego - zachmurzenie wg aktualnej ikony: słonecznie (w dzien) / bezchmurnie (w nocy),
 //  częściowe zachmurzenie, przejaśnienia (tylko MSN; w nocy częściowe zachmurzenie), pochmurno. Inne ikony bez wskazowki - sama etykieta komfortu.
 // ---------------------------------------------------------------------
 // Rodzaj zjawiska wg kodu pogody WMO (godzinowka Open-Meteo albo kody przeliczone z MSN).
@@ -2354,95 +2355,145 @@ uint8_t hintKindOf(uint8_t c) {   // zwraca HintKind (uint8_t - bezpieczne dla p
   return HK_NONE;
 }
 
-// Wpisuje do buf tekst wskazowki; false = brak zjawiska skrajnego. hourNow = biezaca godzina (0-23).
-// Stopien ostrzezenia przed wiatrem, gdy wskazowka nad paskiem to wiatr (0 = brak / inna wskazowka) -
-// drawComfortText rysuje wtedy napis w kolorze ostrzezenia, tak jak wiatr w godzinowce i na dole bloku pogody.
+// Wpisuje do buf tekst wskazowki; false = brak wskazowki. hourNow = biezaca godzina (0-23).
+// hintWindLevel: stopien ostrzezenia przed wiatrem, gdy wskazowka to wiatr (0 = brak / inna wskazowka).
+// hintHazard: wskazowka to zjawisko grozne (grad, burza, golodedz, oblodzenie, snieg, deszcz ze sniegiem albo
+// ostrzezenie o wietrze) - drawComfortText pokazuje ja wtedy SAMA (bez etykiety komfortu) w kolorze hintColor.
 uint8_t hintWindLevel = 0;
+bool hintHazard = false;
+uint16_t hintColor = 0xFFFF;
 
-// Opady i zjawiska z godzinowki: najblizsze HINT_HORIZON godzin (od biezacej), tylko godziny z szansa opadow
-// >= HINT_MIN_PROB % (albo bez danych o szansie). Kolejnosc waznosci:
-//   możliwy grad > możliwa burza > opady śniegu > deszcz ze śniegiem / ryzyko gołoledzi
-//   > deszczowo / możliwy deszcz / przelotne opady > możliwa mgła > wiatr
-//   > zachmurzenie (bezchmurnie / częściowe zachmurzenie / przejaśnienia / pochmurno).
+// Dwa okna czasowe:
+//  - KROTKIE (HINT_HORIZON = 4 h od biezacej godziny) - zwykle zjawiska: deszczowo / możliwy deszcz /
+//    przelotne opady, możliwa mgła, silny wiatr, a bez nich zachmurzenie wg aktualnej ikony.
+//  - DLUGIE dla zjawisk groznych: 12 h, a wieczorem (od HAZARD_EVENING_H) az do HAZARD_MORNING_H nastepnego dnia -
+//    zeby wieczorem bylo widac poranna golodedz. Jesli zjawisko zaczyna sie poza krotkim oknem, napis dostaje
+//    godzine poczatku, np. "Ryzyko gołoledzi od 5:00".
+// Zjawiska grozne (od najwazniejszego): możliwy grad > możliwa burza > ryzyko gołoledzi (marznacy deszcz/mzawka albo
+// deszcz przy temperaturze <= 1 st.) > opady śniegu > deszcz ze śniegiem > ryzyko oblodzenia (wczesniej mokro - deszcz
+// w ostatnich 3 h albo prognozowany - a potem temperatura <= 0 st.: mokre drogi zamarzna, choc juz nie pada).
+// Liczy sie tylko godzina z szansa opadow >= HINT_MIN_PROB % (albo bez danych o szansie).
 // "deszczowo" = deszcz w co najmniej polowie z najblizszych 12 godzin.
-static const int HINT_HORIZON = 6;
+static const int HINT_HORIZON = 4;          // krotkie okno [h]
 static const int HINT_MIN_PROB = 40;
 static const int HINT_RAINY_HOURS = 12;
+static const int HAZARD_HORIZON = 12;       // dlugie okno w ciagu dnia [h]
+static const int HAZARD_EVENING_H = 18;     // od tej godziny dlugie okno siega do rana
+static const int HAZARD_MORNING_H = 10;     // ... do tej godziny nastepnego dnia (wylacznie)
+static const int ICING_PAST_HOURS = 3;      // ile godzin wstecz szukac deszczu przy ryzyku oblodzenia
+
+enum HazardKind : uint8_t { HZ_NONE = 0, HZ_ICING, HZ_SLEET, HZ_SNOW, HZ_ICE, HZ_STORM, HZ_HAIL };   // rosnaco wg waznosci
 
 bool buildWeatherHint(int hourNow, char *buf, size_t n) {
   buf[0] = 0;
   hintWindLevel = 0;
+  hintHazard = false;
+  hintColor = 0xFFFF;
   if (hourNow < 0 || hourNow > 23) hourNow = 0;
   String g0 = current.icon.substring(0, 2);
-  auto hourAt = [&](int k) -> const HourPoint * {   // k godzin od teraz (dzis, potem jutro)
+  auto hourAt = [&](int k) -> const HourPoint * {   // k godzin od teraz (dzis, potem jutro); k < 0 - wczesniej dzis
     int hh = hourNow + k;
+    if (hh < 0) return nullptr;
     if (hh < 24) return &hourlyToday[hh];
     if (forecastCount > 0 && hh < 48) return &hourly[0][hh - 24];
     return nullptr;
   };
+  auto likely = [](const HourPoint *hp) { return hp->rain < 0 || hp->rain >= HINT_MIN_PROB; };
+  auto isWet = [](uint8_t kd) { return kd == HK_RAIN || kd == HK_SHOWER || kd == HK_SLEET; };
 
-  uint8_t best = HK_NONE;
-  bool steady = false, shower = false;          // rodzaj deszczu w najblizszych godzinach
-  int minT = 1000;
+  // ===== 1. zjawiska grozne - dlugie okno =====
+  int hz = HAZARD_HORIZON;
+  if (hourNow >= HAZARD_EVENING_H) hz = (24 - hourNow) + HAZARD_MORNING_H;   // wieczorem: do rana
+  uint8_t best = HZ_NONE;
+  int bestK = 0;
+  auto take = [&](uint8_t kind, int k) { if (kind > best) { best = kind; bestK = k < 0 ? 0 : k; } };
+  bool wetBefore = false;                         // czy wczesniej (od ICING_PAST_HOURS wstecz) bylo/bedzie mokro
+  for (int k = -ICING_PAST_HOURS; k < hz; k++) {
+    const HourPoint *hp = hourAt(k);
+    if (!hp || !hp->valid || hp->code == 255) continue;
+    uint8_t kd = hintKindOf(hp->code);
+    bool lk = likely(hp);
+    if (k >= 0 && lk) {
+      bool freezing = (hp->code == 56 || hp->code == 57 || hp->code == 66 || hp->code == 67);
+      if (kd == HK_HAIL) take(HZ_HAIL, k);
+      else if (kd == HK_STORM) take(HZ_STORM, k);
+      else if (freezing || (isWet(kd) && hp->temp <= 1)) take(HZ_ICE, k);   // deszcz na zmarznietym / przy zerze
+      else if (kd == HK_SNOW) take(HZ_SNOW, k);
+      else if (kd == HK_SLEET) take(HZ_SLEET, k);
+    }
+    // oblodzenie: mokro (deszcz) a potem mroz - liczymy tez godziny miniona (ostatnie ICING_PAST_HOURS)
+    if (k >= 0 && wetBefore && hp->temp <= 0) take(HZ_ICING, k);
+    if (lk && isWet(kd)) wetBefore = true;
+  }
+  if (best != HZ_NONE) {
+    const char *name = "";
+    switch (best) {
+      case HZ_HAIL:  name = L("Możliwy grad", "Possible hail"); break;
+      case HZ_STORM: name = L("Możliwa burza", "Possible storm"); break;
+      case HZ_ICE:   name = L("Ryzyko gołoledzi", "Black ice risk"); break;
+      case HZ_SNOW:  name = L("Opady śniegu", "Snow"); break;
+      case HZ_SLEET: name = L("Deszcz ze śniegiem", "Sleet"); break;
+      default:       name = L("Ryzyko oblodzenia", "Icy roads risk"); break;
+    }
+    if (bestK >= HINT_HORIZON) {                  // dalej niz "za chwile" - z godzina poczatku
+      int hh = (hourNow + bestK) % 24;
+      char when[12];
+      if (settingsStore.settings.use24h) snprintf(when, sizeof(when), "%d:00", hh);
+      else snprintf(when, sizeof(when), "%d %s", hh % 12 == 0 ? 12 : hh % 12, hh < 12 ? "AM" : "PM");
+      snprintf(buf, n, "%s %s %s", name, L("od", "from"), when);
+    } else {
+      snprintf(buf, n, "%s", name);
+    }
+    hintHazard = true;
+    hintColor = rgb565(0xFF8C1A);                 // pomaranczowy - jak przypomnienie o wywozie dzien wczesniej
+    return true;
+  }
+
+  // ===== 2. zwykle zjawiska - krotkie okno =====
+  bool rain = false, steady = false;
   bool fog = (g0 == "50");
   for (int k = 0; k < HINT_HORIZON; k++) {
     const HourPoint *hp = hourAt(k);
     if (!hp) break;
-    if (!hp->valid) continue;
-    if (hp->temp < minT) minT = hp->temp;
-    if (hp->code == 255) continue;
+    if (!hp->valid || hp->code == 255) continue;
     if (hp->code == 45 || hp->code == 48) fog = true;
-    bool likely = (hp->rain < 0 || hp->rain >= HINT_MIN_PROB);
-    if (!likely) continue;
+    if (!likely(hp)) continue;
     uint8_t kd = hintKindOf(hp->code);
+    if (kd == HK_RAIN || kd == HK_SHOWER) rain = true;
     if (kd == HK_RAIN) steady = true;
-    if (kd == HK_SHOWER) shower = true;
-    // deszcz ciagly i przelotny maja te sama wage (rozroznia je ponizej)
-    uint8_t w = (kd == HK_SHOWER) ? (uint8_t)HK_RAIN : kd;
-    if (w > best) best = w;
   }
-  // "deszczowo": deszcz w co najmniej polowie z najblizszych 12 godzin
-  int rainyHours = 0;
+  int rainyHours = 0;                             // "deszczowo": deszcz w co najmniej polowie z najblizszych 12 h
   for (int k = 0; k < HINT_RAINY_HOURS; k++) {
     const HourPoint *hp = hourAt(k);
     if (!hp) break;
     if (!hp->valid || hp->code == 255) continue;
     uint8_t kd = hintKindOf(hp->code);
-    if ((kd == HK_RAIN || kd == HK_SHOWER) && (hp->rain < 0 || hp->rain >= HINT_MIN_PROB)) rainyHours++;
+    if ((kd == HK_RAIN || kd == HK_SHOWER) && likely(hp)) rainyHours++;
   }
-  float tmin = current.valid ? (float)current.temp : 1000.0f;
-  if ((float)minT < tmin) tmin = (float)minT;
 
   const char *txt = nullptr;
-  switch (best) {
-    case HK_HAIL:  txt = L("możliwy grad", "possible hail"); break;
-    case HK_STORM: txt = L("możliwa burza", "possible storm"); break;
-    case HK_SNOW:  txt = L("opady śniegu", "snow"); break;
-    case HK_SLEET: txt = (tmin >= 2.0f) ? L("deszcz ze śniegiem", "sleet") : L("ryzyko gołoledzi", "risk of ice"); break;
-    case HK_RAIN:
-      if (tmin <= 1.0f) txt = L("ryzyko gołoledzi", "risk of ice");   // deszcz przy temperaturze okolo zera
-      else if (rainyHours >= HINT_RAINY_HOURS / 2) txt = L("deszczowo", "rainy");
-      else if (steady) txt = L("możliwy deszcz", "possible rain");
-      else txt = L("przelotne opady", "showers");
-      break;
-    default: break;
+  if (rain) {
+    if (rainyHours >= HINT_RAINY_HOURS / 2) txt = L("deszczowo", "rainy");
+    else if (steady) txt = L("możliwy deszcz", "possible rain");
+    else txt = L("przelotne opady", "showers");
   }
   if (!txt) {
-    // bez opadow: mgla, wiatr (IMGW albo z prognozy - jak w godzinowce), przejasnienia
+    // bez opadow: mgla, wiatr (IMGW albo z prognozy - jak w godzinowce), zachmurzenie
     uint8_t windLvl = 0;
-    const char *windTitle = nullptr;            // nazwa ostrzezenia IMGW (np. "Wiatr")
     for (int k = 0; k < HINT_HORIZON; k++) {
       int hh = hourNow + k;
       const char *d = (hh < 24) ? todayDay.date : (forecastCount > 0 ? forecast[0].date : "");
-      const char *t;
-      uint8_t l = windWarnAt(d, hh % 24, hourAt(k), &t);
-      if (l > windLvl) { windLvl = l; windTitle = t; }
+      uint8_t l = windWarnAt(d, hh % 24, hourAt(k));
+      if (l > windLvl) windLvl = l;
     }
     if (fog) txt = L("możliwa mgła", "possible fog");
     else if (windLvl) {
+      // ostrzezenie o wietrze - jak zjawisko grozne: sam napis w kolorze stopnia ostrzezenia
       hintWindLevel = windLvl;
-      txt = L("silny wiatr", "strong wind");    // zawsze ten sam napis; stopien widac po kolorze
-      (void)windTitle;
+      hintHazard = true;
+      hintColor = alertColor(windLvl);
+      snprintf(buf, n, "%s", L("Silny wiatr", "Strong wind"));
+      return true;
     } else if (g0 == "01") {
       // zwykly opis zachmurzenia; w dzien (ikona "01d") "słonecznie", w nocy "bezchmurnie"
       bool day = current.icon.length() >= 3 && current.icon.charAt(2) == 'd';
@@ -2595,9 +2646,13 @@ void drawComfortText(const ThemeColors &th, const char *label, int hourNow, int 
   char hint[48];
   uint16_t hc = th.text;
   bool has = settingsStore.settings.showHint && buildWeatherHint(hourNow, hint, sizeof(hint));
-  if (has && hintWindLevel) hc = alertColor(hintWindLevel);   // "silny wiatr" przy ostrzezeniu IMGW - kolor ostrzezenia
   if (!has) {
     printCentered(label, topY, FONT_SMALL, th.accent, th.bg);
+    return;
+  }
+  if (hintHazard) {                            // zjawisko grozne / ostrzezenie o wietrze - sam napis, bez etykiety komfortu
+    fitText(hint, sizeof(hint), LCD_H_RES - 16, FONT_SMALL);
+    printCentered(hint, topY, FONT_SMALL, hintColor, th.bg);
     return;
   }
   const int gap = 6;
