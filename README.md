@@ -41,7 +41,7 @@ oraz przypomina o wywozie śmieci. Napisy po polsku albo po angielsku, a konfigu
 
 - Nextion ONX3248G035 (ESP32-S3, ST7796, dotyk CST826, ekspander PCF8574, ładowarka IP4054).
   Schemat i przykłady producenta: <https://github.com/OpenNextion/OpenNextion-SKU-ONX3248G035>
-- Opcjonalnie: czujnik BME280 na I²C (złącze Grove), ogniwo Li-ion.
+- Opcjonalnie: czujnik zewn. BME280 na I²C (złącze Grove), ogniwo Li-ion.
 - Opcjonalna przeróbka „detekcja zasilacza”: dzielnik 4,7 kΩ / 4,7 kΩ z linii VBUS (anoda D2)
   na wejście P7 ekspandera PCF8574 (nóżka 12 U4), włączana w panelu WWW.
 
