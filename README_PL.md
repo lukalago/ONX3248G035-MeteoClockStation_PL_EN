@@ -30,6 +30,7 @@ oraz przypomina o wywozie śmieci. Napisy po polsku albo po angielsku, a konfigu
 - **Informacje:** Wi-Fi, źródło danych, wersja, zasilanie, przyciski Restart i Tryb AP.
 - **Źródła danych:** Open-Meteo (bez klucza), opcjonalnie MSN Pogoda (z ostrzeżeniami IMGW przed wiatrem)
   i pomiary ze stacji IMGW; opcjonalny czujnik BME280.
+- **Autorski algorytm prognozowania pogody na kolejne dni** (na podstawie danych z wybranego modelu).
 - **Ostrzeżenie o silnym wietrze:** z IMGW albo z prognozy, kolorowanie wiatru na ekranach.
 - **Ostrzeżenia o zjawiskach groźnych z wyprzedzeniem:** gołoledź, oblodzenie, śnieg, deszcz ze śniegiem, burza, grad – do 12 h naprzód, a wieczorem aż do rana (np. „Ryzyko gołoledzi od 5:00”).
 - **Przypomnienie o wywozie śmieci:** lista dat w panelu WWW (przykład: `docs/przyklad_harmonogram_smieci.txt`).

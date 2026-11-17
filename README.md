@@ -31,6 +31,7 @@ everything is configured in the web panel.
 - **Information:** Wi-Fi, data source, version, power, Restart and AP mode buttons.
 - **Data sources:** Open-Meteo (no API key), optionally MSN Weather (with IMGW wind warnings – Only PL)
   and live readings from IMGW weather stations (Only PL); optional BME280 sensor.
+- **Original weather forecasting algorithm for the coming days** (based on data from the selected model).
 - **Strong wind warning:** from IMGW or from the forecast, wind shown in warning colors.
 - **Hazardous weather warnings ahead of time:** black ice, icy roads, snow, sleet, thunderstorm, hail – up to 12 h ahead,
   and in the evening until the next morning (e.g. “Black ice risk from 5:00”).
