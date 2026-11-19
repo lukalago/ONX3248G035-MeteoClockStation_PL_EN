@@ -31,7 +31,7 @@
 #include "Lang.h"        // jezyk PL / EN: L("polski", "English")
 #include "Settings.h"
 #include "WeatherIcons.h"
-#define FW_VERSION "3.0.0"   // pokazywana w naglowku panelu WWW
+#define FW_VERSION "3.0.1"   // pokazywana w naglowku panelu WWW
 #include "WebPanel.h"
 #include "PolishText.h"   // polskie znaki i rysowanie tekstu (printAt, printCentered, ...)
 #include "AaShapes.h"     // wygladzone kola, luki, kreski i trojkaty (aaDraw, aaFillCircle, ...)
@@ -1197,29 +1197,58 @@ void applyIconSunHours() {
 }
 
 // Jedno zapytanie = biezaca pogoda + prognoza dzienna (min/max/kod pogody).
-// Ikona dnia "z przebiegu dnia" (opcja panelu "flow"): ikona z poludnia (juz ustawiona w forecast[i].icon), ale gdy
-// pomiedzy 8:00 a 20:00 sa co najmniej 2 godziny z deszczem (kody 51-55, 61, 63, 65, 80-82; szansa >= 40% albo brak danych)
-// a nie pada przez wiekszosc dnia, pokazujemy "slonce z chmura i kroplami" (grupa 05).
-// Zjawiska skrajne (burza, snieg, marznacy deszcz) i mgla zostaja bez zmian - to nie sa grupy 01-04.
+// Ikona dnia "z przebiegu dnia" (opcja panelu "flow"): zamiast samej godziny 12:00 bierzemy caly dzien 8:00-20:00.
+// 1. Deszcz: gdy co najmniej 2 godziny maja deszcz (kody 51-55, 61, 63, 65, 80-82; szansa >= 40% albo brak danych):
+//    - "slonce z chmura i kroplami" (grupa 05), gdy deszcz trwa krocej niz 3/4 dnia i jest przerwa ze sloncem:
+//      co najmniej kFlowMinSun "punktow slonca" (godzina z czesciowym zachmurzeniem lub lepiej = 1 pkt,
+//      w szczycie dnia 10:00-14:00 = 2 pkt - slonce kolo poludnia waży wiecej),
+//    - inaczej zwykla ikona deszczu (chmura z kroplami).
+// 2. Bez takiego deszczu - zachmurzenie usrednione z calego dnia: kazda godzina dostaje "stopien zachmurzenia"
+//    (0 = bezchmurnie ... 1 = pochmurno), srednia wybiera ikone 01 / 02 / 03 / 04. Dzieki temu dzien, w ktorym
+//    tylko w poludnie jest pelne slonce, a reszta godzin jest lekko zachmurzona, dostaje "czesciowe zachmurzenie".
+// Zjawiska skrajne z poludnia (burza, snieg, marznacy deszcz) i mgla zostaja bez zmian - to nie sa grupy 01-04.
 static const int kFlowFrom = 8, kFlowTo = 20, kFlowMinHours = 2;
+static const int kFlowNoonFrom = 10, kFlowNoonTo = 14;   // "szczyt dnia" - slonce w tych godzinach liczy sie podwojnie
+static const int kFlowMinSun = 3;                        // min. "punktow slonca", zeby pokazac slonce z chmura i kroplami
 bool isRainWmo(int code) {
   return (code >= 51 && code <= 55) || code == 61 || code == 63 || code == 65 || (code >= 80 && code <= 82);
+}
+// stopien zachmurzenia godziny (0..1) do sredniej dnia
+float cloudinessOfWmo(int code) {
+  if (code == 0) return 0.0f;                         // bezchmurnie
+  if (code == 1) return 0.15f;                        // prawie bezchmurnie
+  if (code == 2) return 0.5f;                         // czesciowe zachmurzenie
+  if (code == MSN_WMO_MOSTLY_CLOUDY) return 0.75f;    // czeste przejasnienia / duze zachmurzenie (MSN)
+  return 1.0f;                                        // pochmurno, mgla, pojedyncze opady
 }
 void applyDayFlowIcons() {
   if (settingsStore.settings.msnDayIcon != "flow") return;
   for (uint8_t i = 0; i < forecastCount && i < MAX_FORECAST; i++) {
     String g = forecast[i].icon.substring(0, 2);
     if (g != "01" && g != "02" && g != "03" && g != "04") continue;     // poludnie spokojne (slonce / chmury)
-    int valid = 0, rainH = 0, rainCode = -1;
+    int valid = 0, rainH = 0, rainCode = -1, sunnyH = 0;
+    float cloudSum = 0;
     for (int h = kFlowFrom; h <= kFlowTo; h++) {
       const HourPoint &hp = hourly[i][h];
       if (!hp.valid || hp.code == 255) continue;
       valid++;
+      cloudSum += cloudinessOfWmo(hp.code);
+      if (cloudinessOfWmo(hp.code) <= 0.5f)                           // godzina ze sloncem (do czesciowego zachmurzenia);
+        sunnyH += (h >= kFlowNoonFrom && h <= kFlowNoonTo) ? 2 : 1;   // w szczycie dnia (10-14) liczy sie podwojnie
       if (isRainWmo(hp.code) && (hp.rain < 0 || hp.rain >= 40)) { rainH++; if (hp.code > rainCode) rainCode = hp.code; }
     }
-    if (valid == 0 || rainH < kFlowMinHours) continue;                  // za malo godzin z deszczem
-    if (rainH * 2 >= valid) forecast[i].icon = wmoToIcon(rainCode, true);   // pada przez wiekszosc dnia - zwykly deszcz
-    else forecast[i].icon = "05d";                                      // przelotne opady w ciagu dnia
+    if (valid == 0) continue;
+    if (rainH >= kFlowMinHours) {
+      // pada przez co najmniej 3/4 dnia albo slonca prawie nie ma - zwykla ikona deszczu (chmura z kroplami);
+      // "slonce z chmura i kroplami", gdy obok opadow jest wyrazna przerwa ze sloncem (zwlaszcza okolo poludnia)
+      if (rainH * 4 >= valid * 3 || sunnyH < kFlowMinSun) forecast[i].icon = wmoToIcon(rainCode, true);
+      else forecast[i].icon = "05d";                                      // przelotne opady i slonce w ciagu dnia
+      continue;
+    }
+    if (valid < (kFlowTo - kFlowFrom + 1) / 2) continue;                 // za malo godzin - zostaje ikona z poludnia
+    float avg = cloudSum / valid;
+    const char *grp = avg < 0.2f ? "01" : avg < 0.45f ? "02" : avg < 0.7f ? "03" : "04";
+    forecast[i].icon = String(grp) + "d";
   }
 }
 
@@ -1871,7 +1900,7 @@ void drawBottomLine(const ThemeColors &th, int8_t pressureTrendVal, const char *
   int x = kXL;
   bool first = true;
   if (showRain) {
-    drawRainDrop(x + kDropW / 2, kRowY + 1, DROP_COLOR, th.bg);
+    drawRainDrop(x + kDropW / 2, kRowY + 1, todayDay.rainProb > 0 ? DROP_COLOR : th.muted, th.bg);   // 0% = szara, jak slonce
     printWithUnit(rainStr, "%", kPctUnitGap, x + kDropW + kDropGap, kRowY, th.muted, th.bg);
     x += rainW;
     first = false;
@@ -2086,7 +2115,7 @@ void drawForecast(const ThemeColors &th) {
     const int kDropW = 7, kDropGap = 6;   // odstep kropelki od procentow
     int rx = cx - (kDropW + kDropGap + rainW) / 2;
     // kropelka niebieska, gdy jest prognoza; szara, gdy brak danych ("--%")
-    drawRainDrop(rx + kDropW / 2, rainY + 1, forecast[i].rainProb >= 0 ? DROP_COLOR : th.muted, th.bg);
+    drawRainDrop(rx + kDropW / 2, rainY + 1, forecast[i].rainProb > 0 ? DROP_COLOR : th.muted, th.bg);   // 0% / brak danych = szara
     printAt(rainStr, rx + kDropW + kDropGap, rainY, FONT_SMALL, th.muted, th.bg);
 
     // Linia 3 (opcjonalna): godziny ze sloncem w dobie, np. "6 h" ("-- h" gdy model nie podaje)
@@ -2227,7 +2256,7 @@ void drawDayDetail(const ThemeColors &th, uint8_t d) {
     char rb[8];
     if (hp.rain >= 0) snprintf(rb, sizeof(rb), "%d%%", hp.rain);
     else snprintf(rb, sizeof(rb), "--");
-    drawRainDrop(cRain - 20, cy - 5, hp.rain >= 0 ? DROP_COLOR : th.muted, rowBg);
+    drawRainDrop(cRain - 20, cy - 5, hp.rain > 0 ? DROP_COLOR : th.muted, rowBg);   // 0% / brak danych = szara
     printAt(rb, cRain - 12, ty, FONT_SMALL, th.muted, rowBg);
 
     if (kmh) snprintf(buf, sizeof(buf), "%s %.0f", windDirLabel(hp.windDir), hp.windMs * 3.6f);
@@ -2292,6 +2321,12 @@ const char *comfortLabel(float t) {
   if (r <= 30) return L("Ciepło", "Warm");
   return L("Upalnie", "Hot");
 }
+
+// Temperatury z internetu (current, hourly, forecast) przychodza w jednostce wybranej w panelu
+// (C albo F). Progi komfortu, mrozu i gololedzi sa w stopniach Celsjusza - przed porownaniem
+// zamieniamy temperature na C. Czujnik BME280 zawsze podaje C.
+bool tempIsF() { return settingsStore.settings.units == "imperial"; }
+float toC(float t) { return tempIsF() ? (t - 32.0f) * 5.0f / 9.0f : t; }
 
 // Humidex (uproszczony, wzor Environment Canada) — temperatura odczuwalna
 // uwzgledniajaca wilgotnosc. W chlodne/suche dni praktycznie = temperatura
@@ -2417,12 +2452,12 @@ bool buildWeatherHint(int hourNow, char *buf, size_t n) {
       bool freezing = (hp->code == 56 || hp->code == 57 || hp->code == 66 || hp->code == 67);
       if (kd == HK_HAIL) take(HZ_HAIL, k);
       else if (kd == HK_STORM) take(HZ_STORM, k);
-      else if (freezing || (isWet(kd) && hp->temp <= 1)) take(HZ_ICE, k);   // deszcz na zmarznietym / przy zerze
+      else if (freezing || (isWet(kd) && toC(hp->temp) <= 1)) take(HZ_ICE, k);   // deszcz na zmarznietym / przy zerze
       else if (kd == HK_SNOW) take(HZ_SNOW, k);
       else if (kd == HK_SLEET) take(HZ_SLEET, k);
     }
     // oblodzenie: mokro (deszcz) a potem mroz - liczymy tez godziny miniona (ostatnie ICING_PAST_HOURS)
-    if (k >= 0 && wetBefore && hp->temp <= 0) take(HZ_ICING, k);
+    if (k >= 0 && wetBefore && toC(hp->temp) <= 0) take(HZ_ICING, k);
     if (lk && isWet(kd)) wetBefore = true;
   }
   if (best != HZ_NONE) {
@@ -2706,9 +2741,10 @@ void drawComfortBar(const ThemeColors &th) {
     //    (parnosc, slonce), nigdy obnizyc ponizej rzeczywistej temperatury.
     // Do tego korekty: cisnienie i slonce (jak dotad).
     float windKmh = current.windSpeed * 3.6f;
+    float tC = toC(current.temp), feelsC = toC(current.feelsLike);   // przy F - zamiana na C
     float feel;
-    if (current.temp <= 10.0f && windKmh >= 4.8f) feel = windChill(current.temp, windKmh);
-    else feel = (current.feelsLike > current.temp) ? current.feelsLike : current.temp;
+    if (tC <= 10.0f && windKmh >= 4.8f) feel = windChill(tC, windKmh);
+    else feel = (feelsC > tC) ? feelsC : tC;
     comfortTemp = feel + pressureAdjustment(current.pressure) + sunBonus;
   }
 
@@ -3195,27 +3231,34 @@ void drawOutlookScreen(const ThemeColors &th) {
       if (ss > sr) f = (float)(nowM - sr) / (float)(ss - sr);
     }
     bool isDayNow = (f >= 0 && f <= 1);
-    auto arcPt = [&](float t, int &x, int &y) {   // t 0..1 wzdluz luku
-      float a = PI + PI * t;
-      x = cx + (int)lroundf(rx * cosf(a));
-      y = by + (int)lroundf(ry * sinf(a));
-    };
     {
-      // wygladzony luk (elipsa przycieta do gornej polowy): cala droga szara, przebyta czesc grubsza
-      // w kolorze slonca, kropka slonca - jeden przebieg, bez szwow
-      AaShape path = aaEllipse(cx, by - 0.5f, rx, ry, 1.0f);
-      AaShape done = aaEllipse(cx, by - 0.5f, rx, ry, 1.5f);
-      int sx = cx, sy = by;
-      if (isDayNow) arcPt(f, sx, sy);
+      // wygladzony luk drogi slonca jako linia PRZERYWANA (szara, kreski ok. 5 px co 9 px dlugosci luku)
+      // i zolta kropka slonca w biezacym polozeniu - jeden przebieg, bez szwow
+      const int kMaxDash = 32;
+      static AaShape dash[kMaxDash];
+      int nd = 0;
+      {
+        const float dashLen = 5.0f, period = 9.0f;
+        float px = cx - rx, py = by - 0.5f, along = 0, dStart = -1;
+        float sxD = px, syD = py;
+        for (int i = 1; i <= 240 && nd < kMaxDash; i++) {          // probkowanie luku i odmierzanie dlugosci
+          float a = PI + PI * i / 240.0f;
+          float x = cx + rx * cosf(a), y = by - 0.5f + ry * sinf(a);
+          along += sqrtf((x - px) * (x - px) + (y - py) * (y - py));
+          float ph = fmodf(along, period);
+          if (ph < dashLen && dStart < 0) { dStart = along; sxD = px; syD = py; }   // poczatek kreski
+          if ((ph >= dashLen || i == 240) && dStart >= 0) {                        // koniec kreski
+            dash[nd++] = aaCapsule(sxD, syD, x, y, 0.9f);
+            dStart = -1;
+          }
+          px = x; py = y;
+        }
+      }
       float sxf = cx + rx * cosf(PI + PI * f), syf = by + ry * sinf(PI + PI * f);
-      float splitDeg = atan2f(syf - by, sxf - cx) * 180.0f / (float)PI;      // kat polozenia slonca (-180..0)
-      if (splitDeg < 0) splitDeg += 360.0f;
       AaShape sun = aaDisc(sxf, syf, 6.5f);
-      AaLayer layers[3] = { aaLayerClip(&path, 1, th.divider, cx, by, 180, 360),
-                            aaLayerClip(&done, 1, sunCol, cx, by, 180, splitDeg),
+      AaLayer layers[2] = { aaLayer(dash, (uint8_t)nd, th.muted),
                             aaLayer(&sun, 1, sunCol) };
-      aaDraw(layers, isDayNow ? 3 : 1, cardCol);
-      (void)sx; (void)sy;
+      aaDraw(layers, isDayNow ? 2 : 1, cardCol);
     }
     gfx->drawFastHLine(18, by, 134, th.muted);     // horyzont
     // dlugosc dnia w srodku luku, wschod i zachod pod koncami
@@ -3229,25 +3272,25 @@ void drawOutlookScreen(const ThemeColors &th) {
   }
   {
     // Ksiezyc: tarcza fazy, nazwa fazy i "pelnia za N dni"
-    const int tx = 170, tw = 298 - tx;
+    const int tx = 170, tw = 298 - tx, mcx = tx + tw / 2;   // mcx = srodek bloku Ksiezyca (miedzy kreska a brzegiem karty)
     time_t nowT = time(nullptr);
     if (nowT > 1700000000) {
       float ph = moonPhaseAt(nowT);
       ThemeColors mth = th;
       mth.bg = cardCol;                          // tarcza rysowana na tle karty (wygladzony brzeg)
-      drawMoonPhase(tx + 22, 276, 20, ph, mth);
+      drawMoonPhase(mcx, 276, 20, ph, mth);
       snprintf(buf, sizeof(buf), "%s", moonPhaseName(ph));
       fitText(buf, sizeof(buf), tw, FONT_SMALL);
-      printAt(buf, tx, 302, FONT_SMALL, th.text, cardCol);
+      centerText(buf, mcx, 302, th.text);
       float toFullF = ph < 0.5f ? 0.5f - ph : 1.5f - ph;     // pelnia przy fazie 0,5
       int days = (int)lroundf(toFullF * 29.530589f);
       if (days <= 0) snprintf(buf, sizeof(buf), "%s", L("pełnia dziś", "full moon today"));
       else if (days == 1) snprintf(buf, sizeof(buf), "%s", L("pełnia jutro", "full tomorrow"));
       else snprintf(buf, sizeof(buf), L("pełnia za %d dni", "full in %d days"), days);
       fitText(buf, sizeof(buf), tw, FONT_SMALL);
-      printAt(buf, tx, 320, FONT_SMALL, th.muted, cardCol);
+      centerText(buf, mcx, 320, th.muted);
     } else {
-      printAt(L("brak czasu", "no time"), tx, 290, FONT_SMALL, th.muted, cardCol);
+      centerText(L("brak czasu", "no time"), mcx, 290, th.muted);
     }
   }
 
@@ -3293,12 +3336,19 @@ int pmLevel(float v, const float *b) {
   return 5;
 }
 
-const char *humidityWord(int h) {
+// Opis wilgotnosci powietrza na zewnatrz. "Parno" tylko gdy jest naprawde ciepło i wilgotno -
+// o tym decyduje punkt rosy (>= 18 C, wzor Magnusa), a nie sama wilgotnosc: zima 90% to normalka,
+// a nie parnosc. tempC = temperatura powietrza w st. C.
+const char *humidityWord(int h, float tempC) {
+  float a = 17.62f, b = 243.12f;
+  float g = logf((h > 0 ? h : 1) / 100.0f) + a * tempC / (b + tempC);
+  float dew = b * g / (a - g);                   // punkt rosy [C]
+  if (dew >= 18.0f) return L("parno", "muggy");
   if (h < 30) return L("sucho", "dry");
   if (h < 45) return L("dość sucho", "rather dry");
-  if (h <= 60) return L("komfortowo", "comfortable");
-  if (h <= 75) return L("wilgotno", "humid");
-  return L("parno", "muggy");
+  if (h <= 75) return L("komfortowo", "comfortable");
+  if (h < 90) return L("wilgotno", "humid");
+  return L("bardzo wilgotno", "very humid");
 }
 
 // Budowa opisu "co bedzie jutro": do 3 krotkich linii, od najwazniejszej. Zwraca liczbe linii.
@@ -3350,12 +3400,13 @@ int buildTomorrowLines(char lines[3][56], uint8_t lvl[3], uint16_t cols[3], cons
                         : L("Silny wiatr, do %d m/s", "Strong wind, up to %d m/s"), vv);
   }
   // 4. przymrozek
-  if (t.tempMin <= 0.0f && todayDay.date[0] && todayDay.tempMin > 0.0f) add(0, th.accent, L("Przymrozek (min %d st.)", "Frost (low %d deg.)"), (int)lroundf(t.tempMin));
+  if (toC(t.tempMin) <= 0.0f && todayDay.date[0] && toC(todayDay.tempMin) > 0.0f) add(0, th.accent, L("Przymrozek (min %d st.)", "Frost (low %d deg.)"), (int)lroundf(t.tempMin));
   // 5. temperatura wzgledem dzisiaj
   if (todayDay.date[0] && todayDay.tempMax > -900 && t.tempMax > -900) {
     int d = (int)lroundf(t.tempMax) - (int)lroundf(todayDay.tempMax);
-    if (d >= 3) add(0, th.text, L("Cieplej niż dzisiaj (o %d st.)", "Warmer than today (by %d deg.)"), d);
-    else if (d <= -3) add(0, th.text, L("Chłodniej niż dzisiaj (o %d st.)", "Cooler than today (by %d deg.)"), -d);
+    int d3 = tempIsF() ? 5 : 3;              // prog ok. 3 st. C (= 5 st. F)
+    if (d >= d3) add(0, th.text, L("Cieplej niż dzisiaj (o %d st.)", "Warmer than today (by %d deg.)"), d);
+    else if (d <= -d3) add(0, th.text, L("Chłodniej niż dzisiaj (o %d st.)", "Cooler than today (by %d deg.)"), -d);
     else if (n == 0) add(0, th.text, L("Podobna temperatura jak dzisiaj", "Similar temperature to today"), 0);
   }
   // 6. slonce
@@ -3477,7 +3528,7 @@ void drawAirScreen(const ThemeColors &th) {
     }
     printAt("C", x + 12 + w + 11, y + 33, FONT_VALUE, th.text, cardCol);
     char cl[24];
-    snprintf(cl, sizeof(cl), "%s", comfortLabel(current.feelsLike));
+    snprintf(cl, sizeof(cl), "%s", comfortLabel(toC(current.feelsLike)));
     cl[0] = (char)tolower((unsigned char)cl[0]);        // etykiety zaczynaja sie od litery ASCII
     subText(cl, x, y);                           // np. "zimno"
   }
@@ -3486,7 +3537,7 @@ void drawAirScreen(const ThemeColors &th) {
     int x = tile(2, L("Wilgotność", "Humidity")), y = tileY(2);
     snprintf(buf, sizeof(buf), "%d%%", current.humidity);
     printAt(buf, x + 12, y + 33, FONT_VALUE, th.text, cardCol);
-    subText(humidityWord(current.humidity), x, y);
+    subText(humidityWord(current.humidity, toC(current.temp)), x, y);
   }
   // 4. cisnienie (lokalny czujnik albo API) z trendem - jak w dolnej linii ekranu glownego
   {
